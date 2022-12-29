@@ -12,6 +12,7 @@ setup(
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     packages=['simple_i18n'],
+    requires=['pystache'],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
