@@ -8,7 +8,7 @@ setup(
     author_email='1444807655@qq.com',
     maintainer='iDkGK',
     maintainer_email='1444807655@qq.com',
-    license='BSD License (BSD)',
+    license='MIT',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     packages=['simple_i18n'],

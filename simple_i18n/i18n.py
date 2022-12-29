@@ -4,7 +4,7 @@ __url__ = 'https://github.com/iDkGK/simple-i18n'
 __version__ = '0.1.0'
 __author__ = 'iDkGK'
 __author_email__ = "1444807655@qq.com"
-__license__ = 'BSD'
+__license__ = 'MIT'
 
 
 # dependencies
@@ -17,9 +17,10 @@ import pystache
 import re
 import shutil
 import stat
-from typing import Any, TypeVar
+from typing import Any, overload
 from types import FunctionType, ModuleType
 from .utilities import *
+                
 
 # create constructor function
 def I18n(_OPTS: dict[str, Any] = {}):
@@ -73,7 +74,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     i18n['version'] = '0.1.0'
 
-    def i18nConfigure(opt=_OPTS):
+    def i18nConfigure(opt=_OPTS, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
@@ -82,14 +83,14 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
         # Provide custom API method aliases if desired
         # This needs to be processed before the first call to applyAPItoObject()
-        if 'api' in opt and (type(opt['api']) is dict or type(opt['api']) is list):
+        if checkValues(opt, ['api', dict]):
             for method in opt['api']:
                 alias = opt['api'][method]
-                if method in api:
+                if checkValues(opt, method):
                     api[method] = alias
 
         # you may register i18n in global scope, up to you
-        if 'register' in opt and (type(opt['register']) is dict or type(opt['register']) is list):
+        if checkValues(opt, ['register', dict, list]):
             register = opt['register']
             # or give an array objects to register to
             if type(opt['register']) is list:
@@ -100,103 +101,106 @@ def I18n(_OPTS: dict[str, Any] = {}):
                 applyAPItoObject(opt['register'])
 
         # sets a custom cookie name to parse locale settings from
-        cookiename = opt['cookie'] if 'cookie' in opt and type(opt['cookie']) is str else None
+        cookiename = opt['cookie'] if checkValues(opt, ['cookie', str]) else None
 
         # set the custom header name to extract the language locale
-        languageHeaderName = opt['header'] if 'header' in opt and type(opt['header']) is str else 'accept-language'
+        languageHeaderName = opt['header'] if checkValues(opt, ['header', str]) else 'accept-language'
 
         # query-string parameter to be watched - @todo: add test & doc
-        queryParameter = opt['queryParameter'] if 'queryParameter' in opt and type(opt['queryParameter']) is str else None
+        queryParameter = opt['queryParameter'] if checkValues(opt, ['queryParameter', str]) else None
 
         # where to store json files
-        directory = opt['directory'] if 'directory' in opt and type(opt['directory']) is str else os.path.join(os.getcwd(), 'locales')
+        directory = opt['directory'] if checkValues(opt, ['directory', str]) else os.path.join(os.getcwd(), 'locales')
 
         # permissions when creating new directories
-        directoryPermissions = int(opt['directoryPermissions'], 8) if 'directoryPermissions' in opt and type(opt['directoryPermissions']) is str else None
+        directoryPermissions = int(opt['directoryPermissions'], 8) if checkValues(opt, ['directoryPermissions', str]) else None
 
         # write new locale information to disk
-        updateFiles = opt['updateFiles'] if 'updateFiles' in opt and type(opt['updateFiles']) is bool else True
+        updateFiles = opt['updateFiles'] if checkValues(opt, ['updateFiles', bool]) else True
 
         # sync locale information accros all files
-        syncFiles = opt['syncFiles'] if 'syncFiles' in opt and type(opt['syncFiles']) is bool else False
+        syncFiles = opt['syncFiles'] if checkValues(opt, ['syncFiles', bool]) else False
 
         # what to use as the indentation unit (ex: '\t', '  ')
-        indent = opt['indent'] if 'indent' in opt and type(opt['indent']) is str else '\t'
+        indent = opt['indent'] if checkValues(opt, ['indent', str]) else '\t'
 
         # json files prefix
-        prefix = opt['prefix'] if 'prefix' in opt and type(opt['prefix']) is str else ''
+        prefix = opt['prefix'] if checkValues(opt, ['prefix', str]) else ''
 
         # where to store json files
-        extension = opt['extension'] if 'extension' in opt and type(opt['extension']) is str else '.json'
+        extension = opt['extension'] if checkValues(opt, ['extension', str]) else '.json'
 
         # setting defaultLocale
-        defaultLocale = opt['defaultLocale'] if 'defaultLocale' in opt and type(opt['defaultLocale']) is str else 'en'
+        defaultLocale = opt['defaultLocale'] if checkValues(opt, ['defaultLocale', str]) else 'en'
 
         # allow to retry in default locale, useful for production
-        retryInDefaultLocale = opt['retryInDefaultLocale'] if 'retryInDefaultLocale' in opt and type(opt['retryInDefaultLocale']) is bool else False
+        retryInDefaultLocale = opt['retryInDefaultLocale'] if checkValues(opt, ['retryInDefaultLocale', bool]) else False
 
         # auto reload locale files when changed
-        autoReload = opt['autoReload'] if 'autoReload' in opt and type(opt['autoReload']) is bool else False
+        autoReload = opt['autoReload'] if checkValues(opt, ['autoReload', bool]) else False
 
         # enable object notation?
-        objectNotation = opt['objectNotation'] if 'objectNotation' in opt else False
+        objectNotation = opt['objectNotation'] if checkValues(opt, 'objectNotation') else False
         if objectNotation == True:
             objectNotation = '.'
 
         # read language fallback map
-        fallbacks = opt['fallbacks'] if 'fallbacks' in opt and (type(opt['fallbacks']) is dict or type(opt['fallbacks']) is list) else {}
+        fallbacks = opt['fallbacks'] if checkValues(opt, ['fallbacks', dict]) else {}
 
         # setting custom logger functions
-        logDebugFn = opt['logDebugFn'] if 'logDebugFn' in opt and type(opt['logDebugFn']) is FunctionType else logging.debug
-        logWarnFn = opt['logWarnFn'] if 'logWarnFn' in opt and type(opt['logWarnFn']) is FunctionType else logging.warn
-        logErrorFn = opt['logErrorFn'] if 'logErrorFn' in opt and type(opt['logErrorFn']) is FunctionType else logging.error
-        preserveLegacyCase = opt['preserveLegacyCase'] if 'preserveLegacyCase' in opt and type(opt['preserveLegacyCase']) is bool else True
+        logger = logging.getLogger(__name__)
+        logDebugFn = opt['logDebugFn'] if checkValues(opt, ['logDebugFn', FunctionType]) else logger.debug
+        logWarnFn = opt['logWarnFn'] if checkValues(opt, ['logWarnFn', FunctionType]) else logger.warning
+        logErrorFn = opt['logErrorFn'] if checkValues(opt, ['logErrorFn', FunctionType]) else logger.error
+        preserveLegacyCase = opt['preserveLegacyCase'] if checkValues(opt, ['preserveLegacyCase', bool]) else True
 
         # setting custom missing key function
-        missingKeyFn = opt['missingKeyFn'] if 'missingKeyFn' in opt and type(opt['missingKeyFn']) is FunctionType else missingKey
-        parser = opt['parser'] if 'parser' in opt and hasattr(opt['parser'], 'loads') and hasattr(opt['parser'], 'dumps') else json
+        missingKeyFn = opt['missingKeyFn'] if checkValues(opt, ['missingKeyFn', FunctionType]) else missingKey
+        parser = opt['parser'] if checkValues(opt, 'parser') and hasattr(opt['parser'], 'loads') and hasattr(opt['parser'], 'dumps') else json
 
         # when missing locales we try to guess that from directory
-        opt['locales'] = list(opt['staticCatalog'].keys()) if 'staticCatalog' in opt else opt['locales'] if 'locales' in opt else guessLocales(directory)
+        opt['locales'] = list(opt['staticCatalog'].keys()) if checkValues(opt, 'staticCatalog') else opt['locales'] if checkValues(opt, 'locales') else guessLocales(directory)
 
         # some options should be disabled when using staticCatalog
-        if 'staticCatalog' in opt:
+        if checkValues(opt, 'staticCatalog'):
             updateFiles = False
             autoReload = False
             syncFiles = False
 
         # customize mustache parsing
-        if 'mustacheConfig' in opt:
-            if 'tags' in opt['mustacheConfig'] and type(opt['mustacheConfig']['tags']) is list:
+        if checkValues(opt, 'mustacheConfig'):
+            if checkValues(opt['mustacheConfig'], ['tags', list]):
                 mustacheConfig['tags'] = opt['mustacheConfig']['tags']
-            if 'disable' in opt['mustacheConfig'] and opt['mustacheConfig']['disable'] == True:
+            if checkValues(opt['mustacheConfig'], 'disable') and opt['mustacheConfig']['disable'] == True:
                 mustacheConfig['disable'] = True
 
         [start, end] = mustacheConfig['tags']
         mustacheRegex = re.compile(f'{escapeRegExp(start)}.*{escapeRegExp(end)}')
 
         # implicitly read all locales
-        if 'locales' in opt and type(opt['locales']) is list:
-            if 'staticCatalog' in opt:
+        if checkValues(opt, ['locales', list]):
+            if checkValues(opt, 'staticCatalog'):
                 locales = opt['staticCatalog']
             else:
                 for locale in opt['locales']:
                     read(locale)
 
+            # auto reload locale files when changed
             if autoReload:
                 # watch changes of locale files (it's called twice because fs.watch is still unstable)
-                # fs.watch(directory, (event, filename) => {
-                #     const localeFromFile = guessLocaleFromFile(filename)
-                #     if (localeFromFile && opt.locales.indexOf(localeFromFile) > -1) {
-                #         logDebug('Auto reloading locale file '' + filename + ''.')
-                #         read(localeFromFile)
-                #     }
-                # })
-                raise NotImplementedError
+                def handler(event):
+                    filename = os.path.basename(event.src_path)
+                    localeFromFile = guessLocaleFromFile(filename)
+
+                    if localeFromFile and checkValues(opt['locales'], localeFromFile) and opt['locales'].index(localeFromFile) > 1:
+                        logDebug(f'Auto reloading locale file "{filename}".')
+                        read(localeFromFile)
+                    i18n['configure'](_OPTS)
+                watchFiles(directory, handler)
 
     i18n['configure'] = i18nConfigure
 
-    def i18nInit(request, response, next):
+    def i18nInit(request, response, next, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
@@ -214,11 +218,9 @@ def I18n(_OPTS: dict[str, Any] = {}):
         arguments = argv[1]
 
         # called like __({phrase: 'Hello', locale: 'en'})
-        if type(phrase) is dict or type(phrase) is list:
-            if (
-                'locale' in phrase and type(phrase['locale']) is str and
-                'phrase' in phrase and type(phrase['phrase']) is str
-            ):
+        if type(phrase) is dict:
+            if (checkValues(phrase, ['locale', str]) and
+                checkValues(phrase, ['phrase', str])):
                 msg = translate(phrase['locale'], phrase['phrase'])
         # called like __('Hello')
         else:
@@ -226,11 +228,11 @@ def I18n(_OPTS: dict[str, Any] = {}):
             msg = translate(getLocaleFromObject(i18n), phrase)
 
         # postprocess to get compatible to plurals
-        if (type(msg) is dict or type(msg) is list) and 'one' in msg:
+        if (type(msg) is dict or type(msg) is list) and checkValues(msg, 'one'):
             msg = msg['one']
 
         # in case there is no 'one' but an 'other' rule
-        if (type(msg) is dict or type(msg) is list) and 'other' in msg:
+        if (type(msg) is dict or type(msg) is list) and checkValues(msg, 'other'):
             msg = msg['other']
 
         # head over to postProcessing
@@ -238,7 +240,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     i18n['__'] = i18nTranslate
 
-    def i18nMessageformat(phrase):
+    def i18nMessageformat(phrase, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
@@ -246,7 +248,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     i18n['__mf'] = i18nMessageformat
 
-    def i18nTranslationList(phrase):
+    def i18nTranslationList(phrase, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
@@ -254,7 +256,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     i18n['__l'] = i18nTranslationList
 
-    def i18nTranslationHash(phrase):
+    def i18nTranslationHash(phrase, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
@@ -262,7 +264,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     i18n['__h'] = i18nTranslationHash
 
-    def i18nTranslatePlural(singular, plural, count):
+    def i18nTranslatePlural(singular, plural, count, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
@@ -270,7 +272,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     i18n['__n'] = i18nTranslatePlural
 
-    def i18nSetLocale(obj=None, locale=None, skipImplicitObjects=False):
+    def i18nSetLocale(obj=None, locale=None, skipImplicitObjects=False, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
@@ -290,11 +292,11 @@ def I18n(_OPTS: dict[str, Any] = {}):
             targetLocale = obj
 
         # consider a fallback
-        if targetLocale not in locales or not locales[targetLocale]:
+        if checkValues(locales, targetLocale):
             targetLocale = getFallback(targetLocale, fallbacks) or targetLocale
 
         # now set locale on object
-        targetObject['locale'] = targetLocale if targetLocale in locales and locales[targetLocale] else defaultLocale
+        targetObject['locale'] = targetLocale if checkValues(locales, targetLocale) else defaultLocale
 
         # consider any extra registered objects
         if type(register) is dict or type(register) is list:
@@ -305,22 +307,22 @@ def I18n(_OPTS: dict[str, Any] = {}):
                 register['locale'] = targetObject['locale']
 
         # consider res
-        if 'res' in targetObject and targetObject['res'] and not skipImplicitObjects:
+        if checkValues(targetObject, 'res') and not skipImplicitObjects:
             # escape recursion
             # @see  - https://github.com/balderdashy/sails/pull/3631
             #       - https://github.com/mashpie/i18n-node/pull/218.
-            if 'locals' in targetObject['res'] and targetObject['res']['locals']:
+            if checkValues(targetObject['res'], 'locals'):
                 i18n['setLocale'](targetObject['res'], targetObject['locale'], True)
                 i18n['setLocale'](targetObject['res']['locals'], targetObject['locale'], True)
             else:
                 i18n['setLocale'](targetObject['res'], targetObject['locale'])
 
         # consider locals
-        if 'locals' in targetObject and targetObject['locals'] and not skipImplicitObjects:
+        if checkValues(targetObject, 'locals') and not skipImplicitObjects:
             # escape recursion
             # @see  - https://github.com/balderdashy/sails/pull/3631
             #       - https://github.com/mashpie/i18n-node/pull/218
-            if 'res' in targetObject['locals'] and targetObject['locals']['res']:
+            if checkValues(targetObject['locals'], 'res'):
                 i18n['setLocale'](targetObject['locals'], targetObject['locale'], True)
                 i18n['setLocale'](targetObject['locals']['res'], targetObject['locale'], True)
             else:
@@ -330,12 +332,12 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     i18n['setLocale'] = i18nSetLocale
 
-    def i18nGetLocale(request):
+    def i18nGetLocale(request, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
         # called like i18n.getLocale(req)
-        if request and 'locale' in request and request['locale']:
+        if type(request) is dict and checkValues(request, 'locale'):
             return request['locale']
 
         # called like req.getLocale()
@@ -343,7 +345,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     i18n['getLocale'] = i18nGetLocale
 
-    def i18nGetCatalog(obj, locale):
+    def i18nGetCatalog(obj, locale, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
@@ -351,7 +353,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     i18n['getCatalog'] = i18nGetCatalog
 
-    def i18nGetLocales():
+    def i18nGetLocales(*args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
@@ -359,7 +361,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     i18n['getLocales'] = i18nGetLocales
 
-    def i18nAddLocale(locale):
+    def i18nAddLocale(locale, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
@@ -367,7 +369,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     i18n['addLocale'] = i18nAddLocale
 
-    def i18nRemoveLocale(locale):
+    def i18nRemoveLocale(locale, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
@@ -398,7 +400,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
         # if we have extra arguments with values to get replaced,
         # an additional substition injects those strings afterwards
-        if re.compile('%').search(msg) and arguments and len(arguments) > 0:
+        if re.compile(r'%').search(msg) and arguments and len(arguments) > 0:
             msg = msg % tuple(arguments)
 
         return msg
@@ -441,12 +443,12 @@ def I18n(_OPTS: dict[str, Any] = {}):
             alias = api[method]
 
             # be kind rewind, or better not touch anything already existing
-            if alias not in obj or not obj[alias]:
+            if checkValues(obj, alias):
                 alreadySetted = False
                 obj[alias] = i18n[method]
 
         # set initial locale if not set
-        if 'locale' not in obj or not obj['locale']:
+        if checkValues(obj, 'locale'):
             obj['locale'] = defaultLocale
 
         # escape recursion
@@ -454,11 +456,11 @@ def I18n(_OPTS: dict[str, Any] = {}):
             return
 
         # attach to response if present (ie. in express)
-        if 'res' in obj:
+        if checkValues(obj, 'res'):
             applyAPItoObject(obj['res'])
 
         # attach to locals if present (ie. in express)
-        if 'locals' in obj:
+        if checkValues(obj, 'locals'):
             applyAPItoObject(obj['locals'])
 
     def guessLocales(dir=None, *args, **kwargs):
@@ -469,7 +471,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
         localesFound = []
 
         for i in range(len(entries), 0, -1):
-            if re.compile(r'^\.').match(entries[i]):
+            if re.compile(r'^\.').search(entries[i]):
                 continue
             localeFromFile = guessLocaleFromFile(entries[i])
             if localeFromFile:
@@ -481,14 +483,14 @@ def I18n(_OPTS: dict[str, Any] = {}):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
-        extensionRegex = re.compile(f'{extension}$')
-        prefixRegex = re.compile(f'^{prefix}')
+        extensionRegex = re.compile(rf'{extension}$')
+        prefixRegex = re.compile(rf'^{prefix}')
 
         if not filename:
             return False
-        if prefix and not prefixRegex.match(filename):
+        if prefix and not prefixRegex.search(filename):
             return False
-        if extension and not extensionRegex.match(filename):
+        if extension and not extensionRegex.search(filename):
             return False
         return extensionRegex.sub('', prefixRegex.sub('', filename))
 
@@ -515,9 +517,9 @@ def I18n(_OPTS: dict[str, Any] = {}):
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
         locale = None
-        if 'scope' in obj:
+        if type(obj) is dict and checkValues(obj, 'scope') and checkValues(obj['scope'], 'locale'):
             locale = obj['scope']['locale']
-        if 'locale' in obj:
+        if checkValues(obj, 'locale'):
             locale = obj['locale']
         return locale
 
@@ -534,7 +536,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
             # access variables from upper function
             nonlocal returnPhrase, intervalRuleExists
             
-            matches = re.match(r'^\s*([()[\]]+[\d,]+[()[\]]+)?\s*(.*)$', p)
+            matches = re.search(r'^\s*([()[\]]+[\d,]+[()[\]]+)?\s*(.*)$', p)
 
             # not the same as in combined condition
             if matches and matches.group(1):
@@ -582,15 +584,15 @@ def I18n(_OPTS: dict[str, Any] = {}):
             locale = defaultLocale
 
         # try to get a fallback
-        if locale not in locales or not locales[locale]:
+        if not checkValues(locales, locale):
             locale = getFallback(locale, fallbacks) or locale
 
         # attempt to read when defined as valid locale
-        if locale not in locales or not locales[locale]:
+        if not checkValues(locales, locale):
             read(locale)
 
         # fallback to default when missed
-        if locale not in locales or not locales[locale]:
+        if not checkValues(locales, locale):
             logWarn(f'WARN: Locale  {locale} couldn\'t be read - check the context of the call to $__. Using {defaultLocale} (default) as current locale')
 
             locale = defaultLocale
@@ -651,7 +653,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
         # Bail out on non-existent locales to defend against internal errors.
-        if locale not in locales or not locales[locale]:
+        if not checkValues(locales, locale):
             return localeAccessor
 
         # Handle object lookup notation
@@ -673,7 +675,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
                 accessor = nullAccessor
                 # If our current target object (in the locale tree) doesn't exist or
                 # it doesn't have the next subterm as a member...
-                if obj is None or (index in obj and obj[index]):
+                if obj is None or checkValues(obj, index):
                     # ...remember that we need retraversal (because we didn't find our target).
                     reTraverse = allowDelayedTraversal
                     # Return null to avoid deeper iterations.
@@ -690,14 +692,14 @@ def I18n(_OPTS: dict[str, Any] = {}):
             return lambda *args, **kwargs: localeAccessor(locale, singular, False)() if reTraverse else accessor()
         else:
             # No object notation, just return an accessor that performs array lookup.
-            return lambda *args, **kwargs: locales[locale][singular] if singular in locales[locale] else None
+            return lambda *args, **kwargs: locales[locale][singular] if checkValues(locales[locale], singular) else None
 
     def localeMutator(locale=None, singular=None, allowBranching=False, *args, **kwargs):
         # access variables from upper function
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
         # Bail out on non-existent locales to defend against internal errors.
-        if locale not in locales or not locales[locale]:
+        if not checkValues(locales, locale):
             return localeMutator
 
         # Handle object lookup notation
@@ -721,11 +723,11 @@ def I18n(_OPTS: dict[str, Any] = {}):
                 accessor = nullAccessor
                 # If our current target object (in the locale tree) doesn't exist or
                 # it doesn't have the next subterm as a member...
-                if obj is None or index not in obj:
+                if obj is None or not checkValues(obj, index):
                     # ...check if we're allowed to create new branches.
                     if allowBranching:
                         # Fix `object` if `object` is not Object.
-                        if obj is None or (type(obj) is not dict and type(obj) is not list):
+                        if obj is None or type(obj) is not dict:
                             obj = fixObject()
                         # If we are allowed to, create a new object along the path.
                         obj[index] = {}
@@ -769,13 +771,13 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
         localeFile = {}
         file = getStorageFilePath(locale)
-        with open(file, 'r', encoding='utf-8') as localeFile:
-            content = localeFile.read()
-            try:
-                # parsing filecontents to locales[locale]
-                locales[locale] = parser.loads(content) # type: ignore
-            except Exception as parseError:
-                logError(f'unable to parse locales from file (maybe {file} is empty or invalid json?): ', parseError)
+        try:
+            with open(file, 'r', encoding='utf-8') as localeFile:
+                content = localeFile.read()
+            # parsing filecontents to locales[locale]
+            locales[locale] = parser.loads(content) # type: ignore
+        except Exception as parseError:
+            logError(f'unable to parse locales from file (maybe {file} is empty or invalid json?): ', parseError)
         try:
             logDebug(f'read {file} for locale: {locale}')
         except Exception as readError:
@@ -818,7 +820,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
                     raise e
 
         # first time init has an empty file
-        if locale not in locales or not locales[locale]:
+        if not checkValues(locales, locale):
             locales[locale] = {}
 
         # writing to tmp and rename on success
@@ -859,11 +861,11 @@ def I18n(_OPTS: dict[str, Any] = {}):
         nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
         fallbacks = fbs or {}
-        if targetLocale in fallbacks:
+        if checkValues(fallbacks, targetLocale):
             return fallbacks[targetLocale]
         fallBackLocale = None
         for key in fallbacks:
-            if re.match(r'^'+key.replace('*', '.*')+r'$', str(targetLocale)):
+            if re.search(r'^'+key.replace('*', '.*')+r'$', str(targetLocale)):
                 fallBackLocale = fallbacks[key]
                 break
         return fallBackLocale
@@ -904,56 +906,105 @@ def I18n(_OPTS: dict[str, Any] = {}):
         def __init__(self):
             self.__dict__ = i18n
 
-        @staticmethod
-        def configure(opt=_OPTS):
+        @property
+        def version() -> str:
             pass
 
         @staticmethod
-        def init(request, response, next):
+        def configure(options=_OPTS) -> None:
             pass
 
         @staticmethod
-        def __(phrase=None, *args, **kwargs):
+        def init(request, response, next) -> None:
+            pass
+
+        @overload
+        @staticmethod
+        def __(phraseOrOptions=None, *replace) -> str:
+            pass
+
+        @overload
+        @staticmethod
+        def __(phraseOrOptions, replacements) -> str:
+            pass
+
+        @overload
+        @staticmethod
+        def __n(phrase, count) -> str:
+            pass
+
+        @overload
+        @staticmethod
+        def __n(phrase, count) -> str:
+            pass
+
+        @overload
+        @staticmethod
+        def __n(phrase, plural, count) -> str:
             pass
 
         @staticmethod
-        def __n(phrase):
+        def __l(phrase) -> str:
             pass
 
         @staticmethod
-        def __l(phrase):
+        def __h(phrase) -> str:
+            pass
+
+        @overload
+        @staticmethod
+        def __mf(phraseOrOptions, *replace) -> str:
+            pass
+
+        @overload
+        @staticmethod
+        def __mf(phraseOrOptions, replacements) -> str:
             pass
 
         @staticmethod
-        def __h(phrase):
+        def getLocale(request) -> str:
+            pass
+
+        @overload
+        @staticmethod
+        def setLocale(locale) -> str:
+            pass
+
+        @overload
+        @staticmethod
+        def setLocale(requestOrResponse, locale, inheritance) -> str:
+            pass
+
+        @overload
+        @staticmethod
+        def setLocale(objects, locale, inheritance) -> str:
+            pass
+
+        @overload
+        @staticmethod
+        def getCatalog() -> Any:
+            pass
+
+        @overload
+        @staticmethod
+        def getCatalog(locale) -> Any:
+            pass
+
+        @overload
+        @staticmethod
+        def getCatalog(request, locale) -> Any:
             pass
 
         @staticmethod
-        def __mf(singular, plural, count):
+        def getLocales() -> list[str]:
             pass
 
         @staticmethod
-        def getLocale(obj=None, locale=None, skipImplicitObjects=False):
+        def addLocale(locale) -> None:
             pass
 
         @staticmethod
-        def setLocale(request):
-            pass
-
-        @staticmethod
-        def getCatalog(obj, locale):
-            pass
-
-        @staticmethod
-        def getLocales():
-            pass
-
-        @staticmethod
-        def addLocale(locale):
-            pass
-
-        @staticmethod
-        def removeLocale(locale):
+        def removeLocale(locale) -> None:
             pass
 
     return I18n()

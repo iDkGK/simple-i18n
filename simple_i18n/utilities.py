@@ -1,16 +1,45 @@
-__all__ = ['escapeRegExp', 'getArgsList', 'parseInterval']
+__all__ = ['escapeRegExp', 'watchFiles', 'getArgsList', 'parseInterval', 'checkValues']
+
 
 # dependencies
 from itertools import chain
 from math import inf, nan
 from re import compile, sub
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
 
 # utils
 escapeRegExp = lambda string: sub(r'[.*+?^${}()|[\]\\]', lambda substring: f'\\{substring.group(0)}', string)
 
+watchFiles = lambda path, handler: _watch(path, handler)
+
 getArgsList = lambda locals, keys: list(chain(*[list(value) if name == 'args' else list(value.values()) if name == 'kwargs' else [value] for name, value in {key: locals[key] for key in keys}.items()]))
 
 parseInterval = lambda string: _entry(string)
+
+checkValues = lambda obj, *keytypes: False not in [keytype in obj if type(keytype) is str else False not in [False if len(keytype) < 2 else keytype[0] in obj and type(obj[keytype[0]]) in keytype[1:]] if type(keytype) is list else False for keytype in keytypes]
+
+
+# private variables & functions
+
+class _EventHandler(FileSystemEventHandler):
+    def __init__(self, handler) -> None:
+        super().__init__()
+        self.locked = False
+        self.handler = handler
+
+    def on_any_event(self, event):
+        if not self.locked:
+            self.locked = True
+            self.handler(event)
+        self.locked = False
+
+def _watch(path, hdlr):
+    handler = _EventHandler(hdlr)
+    observer = Observer()
+    observer.schedule(handler, path)
+    observer.start()
 
 _patternParts = {
     'value': '[-+]?(?:Infinity|[[0-9]*\\.?\\d*(?:[eE][-+]?\\d+)?)',
