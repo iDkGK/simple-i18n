@@ -1,9 +1,10 @@
-__title__ = 'simple i18n'
+__all__ = ['I18n']
+__title__ = 'simple-i18n'
 __description__ = 'Lightweight simple translation JavaScript module \'i18n\' in Python implementation.'
 __url__ = 'https://github.com/iDkGK/simple-i18n'
 __version__ = '0.1.0'
 __author__ = 'iDkGK'
-__author_email__ = "1444807655@qq.com"
+__author_email__ = '1444807655@qq.com'
 __license__ = 'MIT'
 
 
@@ -12,21 +13,66 @@ import functools
 import inspect
 import json
 import logging
+import math
 import os
 import pystache
 import re
 import shutil
 import stat
-from typing import Any, overload
-from types import FunctionType, ModuleType
-from .utilities import *
-                
+from threading import Lock
+from typing import (
+    Any,
+    overload,
+    TypedDict
+)
+from types import (
+    FunctionType,
+    ModuleType
+)
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+# setting global mutex in case that multiple I18n instances read & write at the same time
+globalMutex = Lock()
+
+# type hinting
+class _MustacheConfigT(TypedDict):
+    tags: list[str]
+    disable: bool
+
+class _OPTT(TypedDict):
+    locales: list[str]
+    fallbacks: dict[str, str]
+    defaultLocale: str
+    retryInDefaultLocale: bool
+    cookie: str
+    header: str
+    queryParameter: str
+    directory: str
+    directoryPermissions: str
+    autoReload: bool
+    updateFiles: bool
+    syncFiles: bool
+    indent: str
+    extension: str
+    prefix: str
+    objectNotation: bool
+    logDebugFn: FunctionType
+    logWarnFn: FunctionType
+    logErrorFn: FunctionType
+    missingKeyFn: FunctionType
+    register: dict[str, Any]
+    api: dict[str, str]
+    preserveLegacyCase: bool
+    staticCatalog: dict[str, dict[str, dict[str, str]]]
+    mustacheConfig: _MustacheConfigT
+    parser: ModuleType | Any
 
 # create constructor function
-def I18n(_OPTS: dict[str, Any] = {}):
-    MessageformatInstanceForLocale: dict = {}
-    PluralsForLocale: dict = {}
-    locales: dict = {}
+def I18n(_OPTS: _OPTT = False):
+    MessageformatInstanceForLocale = {}
+    PluralsForLocale = {}
+    locales = {}
     api = {
         '__': '__',
         '__n': '__n',
@@ -40,43 +86,43 @@ def I18n(_OPTS: dict[str, Any] = {}):
         'addLocale': 'addLocale',
         'removeLocale': 'removeLocale'
     }
-    mustacheConfig: dict[str, list[str]|bool] = {
+    mustacheConfig = {
         'tags': ['{{', '}}'],
         'disable': False
     }
-    mustacheRegex: re.Pattern|None = None
-    pathsep: str = os.path.sep
-    autoReload: bool = False
-    cookiename: str|None = None
-    languageHeaderName: str|None = None
-    defaultLocale: str|None = None
-    retryInDefaultLocale: bool = False
-    directory: str|None = None
-    directoryPermissions: int|None = None
-    extension: str|None = None
-    fallbacks: dict|None = None
-    indent: str|None = None
-    logDebugFn: FunctionType|None = None
-    logErrorFn: FunctionType|None = None
-    logWarnFn: FunctionType|None = None
-    preserveLegacyCase: bool = True
-    objectNotation: str|bool = False
-    prefix: str|None = None
-    queryParameter: str|None = None
-    register: dict|None = None
-    updateFiles: bool = True
-    syncFiles: bool = False
-    missingKeyFn: FunctionType|None = None
-    parser: ModuleType|None = None
+    mustacheRegex = None
+    pathsep = os.path.sep
+    autoReload = False
+    cookiename = None
+    languageHeaderName = None
+    defaultLocale = None
+    retryInDefaultLocale = False
+    directory = None
+    directoryPermissions = None
+    extension = None
+    fallbacks = None
+    indent = None
+    logDebugFn = None
+    logErrorFn = None
+    logWarnFn = None
+    preserveLegacyCase = True
+    objectNotation = False
+    prefix = None
+    queryParameter = None
+    register = None
+    updateFiles = True
+    syncFiles = False
+    missingKeyFn = None
+    parser = None
 
     # public exports
-    i18n: dict = {}
+    i18n = {}
 
     i18n['version'] = '0.1.0'
 
     def i18nConfigure(opt=_OPTS, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal locales, api, mustacheConfig, mustacheRegex, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
 
         # reset locales
         locales = {}
@@ -86,7 +132,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
         if checkValues(opt, ['api', dict]):
             for method in opt['api']:
                 alias = opt['api'][method]
-                if checkValues(opt, method):
+                if checkValues(api, method):
                     api[method] = alias
 
         # you may register i18n in global scope, up to you
@@ -148,6 +194,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
         fallbacks = opt['fallbacks'] if checkValues(opt, ['fallbacks', dict]) else {}
 
         # setting custom logger functions
+        logging.basicConfig(level=logging.CRITICAL)
         logger = logging.getLogger(__name__)
         logDebugFn = opt['logDebugFn'] if checkValues(opt, ['logDebugFn', FunctionType]) else logger.debug
         logWarnFn = opt['logWarnFn'] if checkValues(opt, ['logWarnFn', FunctionType]) else logger.warning
@@ -175,7 +222,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
                 mustacheConfig['disable'] = True
 
         [start, end] = mustacheConfig['tags']
-        mustacheRegex = re.compile(f'{escapeRegExp(start)}.*{escapeRegExp(end)}')
+        mustacheRegex = re.compile(rf'{escapeRegExp(start)}.*{escapeRegExp(end)}')
 
         # implicitly read all locales
         if checkValues(opt, ['locales', list]):
@@ -187,33 +234,32 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
             # auto reload locale files when changed
             if autoReload:
-                # watch changes of locale files (it's called twice because fs.watch is still unstable)
+                # watch changes of locale files (it's called twice because watchFiles is still unstable)
                 def handler(event):
+                    # access variables from upper function
+                    nonlocal opt
+
                     filename = os.path.basename(event.src_path)
                     localeFromFile = guessLocaleFromFile(filename)
 
-                    if localeFromFile and checkValues(opt['locales'], localeFromFile) and opt['locales'].index(localeFromFile) > 1:
-                        logDebug(f'Auto reloading locale file "{filename}".')
+                    if localeFromFile and checkValues(opt['locales'], localeFromFile) and opt['locales'].index(localeFromFile) > -1:
+                        logDebug(f'Auto reloading locale file \'{filename}\'.')
                         read(localeFromFile)
-                    i18n['configure'](_OPTS)
                 watchFiles(directory, handler)
 
     i18n['configure'] = i18nConfigure
 
     def i18nInit(request, response, next, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     i18n['init'] = i18nInit
 
     def i18nTranslate(phrase=None, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal i18n
 
-        msg: Any = None
-        argv = parseArgv(getArgsList(locals(), inspect.signature(i18nTranslate).parameters.keys()))
+        msg = None
+        argv = parseArgv(getArgsList(dict(locals().items()), i18nTranslate))
         namedValues = argv[0]
         arguments = argv[1]
 
@@ -241,40 +287,28 @@ def I18n(_OPTS: dict[str, Any] = {}):
     i18n['__'] = i18nTranslate
 
     def i18nMessageformat(phrase, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     i18n['__mf'] = i18nMessageformat
 
     def i18nTranslationList(phrase, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     i18n['__l'] = i18nTranslationList
 
     def i18nTranslationHash(phrase, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     i18n['__h'] = i18nTranslationHash
 
     def i18nTranslatePlural(singular, plural, count, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     i18n['__n'] = i18nTranslatePlural
 
     def i18nSetLocale(obj=None, locale=None, skipImplicitObjects=False, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal i18n, locales, defaultLocale, fallbacks, register
 
         # when given an array of objects => setLocale on each
         if type(obj) is list and type(locale) is str:
@@ -334,7 +368,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     def i18nGetLocale(request, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal i18n, defaultLocale
 
         # called like i18n.getLocale(req)
         if type(request) is dict and checkValues(request, 'locale'):
@@ -346,33 +380,21 @@ def I18n(_OPTS: dict[str, Any] = {}):
     i18n['getLocale'] = i18nGetLocale
 
     def i18nGetCatalog(obj, locale, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     i18n['getCatalog'] = i18nGetCatalog
 
     def i18nGetLocales(*args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     i18n['getLocales'] = i18nGetLocales
 
     def i18nAddLocale(locale, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     i18n['addLocale'] = i18nAddLocale
 
     def i18nRemoveLocale(locale, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     i18n['removeLocale'] = i18nRemoveLocale
@@ -383,7 +405,11 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     def postProcess(msg=None, namedValues=None, arguments=[], count=None, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal mustacheConfig, mustacheRegex
+
+        # in case msg is None
+        if msg is None:
+            return msg
 
         # test for parsable interval string
         if re.compile(r'\|').search(msg):
@@ -406,9 +432,6 @@ def I18n(_OPTS: dict[str, Any] = {}):
         return msg
 
     def argsEndWithNamedObject(arguments=[], *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         return (
             len(arguments) > 1 and
             arguments[len(arguments) - 1] is not None and
@@ -417,12 +440,6 @@ def I18n(_OPTS: dict[str, Any] = {}):
         )
 
     def parseArgv(arguments=[], *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
-        namedValues: Any
-        returnArgs: Any
-
         if argsEndWithNamedObject(arguments):
             namedValues = arguments[len(arguments) - 1]
             returnArgs = arguments[1:-1]
@@ -434,7 +451,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     def applyAPItoObject(obj=None, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal i18n, api, defaultLocale
 
         alreadySetted = True
 
@@ -443,7 +460,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
             alias = api[method]
 
             # be kind rewind, or better not touch anything already existing
-            if checkValues(obj, alias):
+            if not checkValues(obj, alias):
                 alreadySetted = False
                 obj[alias] = i18n[method]
 
@@ -464,9 +481,6 @@ def I18n(_OPTS: dict[str, Any] = {}):
             applyAPItoObject(obj['locals'])
 
     def guessLocales(dir=None, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         entries = os.listdir(dir)
         localesFound = []
 
@@ -481,7 +495,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     def guessLocaleFromFile(filename=None, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal extension, prefix
 
         extensionRegex = re.compile(rf'{extension}$')
         prefixRegex = re.compile(rf'^{prefix}')
@@ -495,27 +509,15 @@ def I18n(_OPTS: dict[str, Any] = {}):
         return extensionRegex.sub('', prefixRegex.sub('', filename))
 
     def extractQueryLanguage(queryLanguage, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     def guessLanguage(request, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     def getAcceptedLanguagesFromHeader(header, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         raise NotImplementedError
 
     def getLocaleFromObject(obj=None, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         locale = None
         if type(obj) is dict and checkValues(obj, 'scope') and checkValues(obj['scope'], 'locale'):
             locale = obj['scope']['locale']
@@ -524,9 +526,6 @@ def I18n(_OPTS: dict[str, Any] = {}):
         return locale
 
     def parsePluralInterval(phrase, count, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         returnPhrase = phrase
         phrases = re.split(r'\|', phrase)
         intervalRuleExists = False
@@ -555,9 +554,6 @@ def I18n(_OPTS: dict[str, Any] = {}):
         return returnPhrase
 
     def matchInterval(number, interval, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         interval = parseInterval(interval)
         if interval and type(number) is int:
             if interval['from']['value'] == number:
@@ -573,7 +569,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     def translate(locale=None, singular=None, plural=None, skipSyncToAllFiles=False, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal locales, defaultLocale, retryInDefaultLocale, fallbacks, objectNotation, syncFiles
 
         # add same key to all translations
         if not skipSyncToAllFiles and syncFiles:
@@ -593,7 +589,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
         # fallback to default when missed
         if not checkValues(locales, locale):
-            logWarn(f'WARN: Locale  {locale} couldn\'t be read - check the context of the call to $__. Using {defaultLocale} (default) as current locale')
+            logWarn(f'WARN: Locale {locale} couldn\'t be read - check the context of the call to $__. Using {defaultLocale} (default) as current locale')
 
             locale = defaultLocale
             read(locale)
@@ -643,18 +639,18 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     def syncToAllFiles(singular=None, plural=None, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal locales
 
-        for l in locales:
-            translate(l, singular, plural, True)
+        for locale in locales:
+            translate(locale, singular, plural, True)
 
     def localeAccessor(locale=None, singular=None, allowDelayedTraversal=True, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal locales, objectNotation
 
         # Bail out on non-existent locales to defend against internal errors.
         if not checkValues(locales, locale):
-            return localeAccessor
+            return lambda *args, **kwargs: None
 
         # Handle object lookup notation
         indexOfDot = objectNotation and singular.rindex(objectNotation)
@@ -669,7 +665,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
             # Split the provided term and run the callback for each subterm.
             def reducer(obj, index):
                 # access variables from upper function
-                nonlocal accessor
+                nonlocal accessor, nullAccessor, reTraverse, allowDelayedTraversal
 
                 # Make the accessor return null.
                 accessor = nullAccessor
@@ -696,11 +692,11 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     def localeMutator(locale=None, singular=None, allowBranching=False, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal locales, objectNotation, missingKeyFn
 
         # Bail out on non-existent locales to defend against internal errors.
         if not checkValues(locales, locale):
-            return localeMutator
+            return lambda *args, **kwargs: None
 
         # Handle object lookup notation
         indexOfDot = objectNotation and singular.rindex(objectNotation)
@@ -711,13 +707,13 @@ def I18n(_OPTS: dict[str, Any] = {}):
             # An accessor that takes one argument and returns null.
             nullAccessor = lambda *args, **kwargs: None
             # Fix object path.
-            fixObject = lambda  *args, **kwargs: {}
+            fixObject = lambda *args, **kwargs: {}
             # Are we going to need to re-traverse the tree when the mutator is invoked?
             reTraverse = False
             # Split the provided term and run the callback for each subterm.
             def reducer(obj, index):
                 # access variables from upper function
-                nonlocal accessor, fixObject
+                nonlocal accessor, nullAccessor, allowBranching, fixObject, reTraverse
 
                 # Make the mutator do nothing.
                 accessor = nullAccessor
@@ -750,6 +746,9 @@ def I18n(_OPTS: dict[str, Any] = {}):
             functools.reduce(reducer, singular.split(objectNotation), locales[locale])
             # Return the final mutator.
             def returnAbove(value):
+                # access variables from upper function
+                nonlocal locale, singular, reTraverse, accessor
+
                 # If we need to re-traverse the tree
                 # invoke the search again, but allow branching
                 # this time (because here the mutator is being invoked)
@@ -760,6 +759,9 @@ def I18n(_OPTS: dict[str, Any] = {}):
         else:
             # No object notation, just return a mutator that performs array lookup and changes the value.
             def returnBelow(value):
+                # access variables from upper function
+                nonlocal locale, singular
+
                 value = missingKeyFn(locale, value)
                 locales[locale][singular] = value
                 return value
@@ -767,19 +769,18 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     def read(locale=None, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal locales, parser
 
         localeFile = {}
         file = getStorageFilePath(locale)
         try:
             with open(file, 'r', encoding='utf-8') as localeFile:
                 content = localeFile.read()
-            # parsing filecontents to locales[locale]
-            locales[locale] = parser.loads(content) # type: ignore
-        except Exception as parseError:
-            logError(f'unable to parse locales from file (maybe {file} is empty or invalid json?): ', parseError)
-        try:
-            logDebug(f'read {file} for locale: {locale}')
+            try:
+                # parsing filecontents to locales[locale]
+                locales[locale] = parser.loads(content)
+            except Exception as parseError:
+                logError(f'unable to parse locales from file (maybe {file} is empty or invalid json?): ', parseError)
         except Exception as readError:
             # unable to read, so intialize that file
             # locales[locale] are already set in memory, so no extra read required
@@ -787,18 +788,17 @@ def I18n(_OPTS: dict[str, Any] = {}):
             # since the current invalid locale could exist, we should back it up
             if os.path.exists(file):
                 logDebug(f'backing up invalid locale {locale} to {file}.invalid')
-                os.rename(file, f'{file}.invalid')
+                blockedRename(file, f'{file}.invalid')
 
             logDebug(f'initializing {file}')
             write(locale)
 
     def write(locale=None, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal locales, directory, directoryPermissions, indent, updateFiles, parser
 
-        stats: Any = None
-        target: Any = None
-        tmp: Any = None
+        tmp = None
+        target = None
 
         # don't write new locale information to disk if updateFiles isn't true
         if not updateFiles:
@@ -828,7 +828,7 @@ def I18n(_OPTS: dict[str, Any] = {}):
             target = getStorageFilePath(locale)
             tmp = f'{target}.tmp'
             with open(tmp, 'w', encoding='utf-8') as file:
-                file.write(parser.dumps(locales[locale], ensure_ascii=False, indent=indent)) # type: ignore
+                file.write(parser.dumps(locales[locale], ensure_ascii=False, indent=indent))
             stats = os.stat(tmp)
             if stats.st_file_attributes == stat.FILE_ATTRIBUTE_ARCHIVE:
                 shutil.move(tmp, target)
@@ -839,28 +839,25 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     def getStorageFilePath(locale=None, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal pathsep, directory, extension, prefix
 
         # changed API to use .json as default, #16
         ext = extension or '.json'
         filepath = os.path.normpath(f'{directory}{pathsep}{prefix}{locale}{ext}')
-        filepathJS = os.path.normpath(f'{directory}{pathsep}{prefix}{locale}.js')
+        filepathJS = os.path.normpath(f'{directory}{pathsep}{prefix}{locale}.py')
 
-        # use .js as fallback if already existing
+        # use .py as fallback if already existing
         try:
             if os.stat(filepathJS):
                 logDebug(f'using existing file {filepathJS}')
-                extension = '.js'
+                extension = '.py'
                 return filepathJS
         except Exception as e:
             logDebug(f'will use {filepath}')
         return filepath
 
-    def getFallback(targetLocale=None, fbs=None, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
-        fallbacks = fbs or {}
+    def getFallback(targetLocale=None, fallbacks=None, *args, **kwargs):
+        fallbacks = fallbacks or {}
         if checkValues(fallbacks, targetLocale):
             return fallbacks[targetLocale]
         fallBackLocale = None
@@ -872,139 +869,243 @@ def I18n(_OPTS: dict[str, Any] = {}):
 
     def logDebug(msg=None, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal logDebugFn
 
         logDebugFn(msg)
 
     def logWarn(msg=None, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal logWarnFn
 
         logWarnFn(msg)
 
     def logError(msg=None, *args, **kwargs):
         # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
+        nonlocal logErrorFn
 
         logErrorFn(msg)
 
     def missingKey(locale=None, value=None, *args, **kwargs):
-        # access variables from upper function
-        nonlocal i18n, MessageformatInstanceForLocale, PluralsForLocale, locales, api, mustacheConfig, mustacheRegex, pathsep, autoReload, cookiename, languageHeaderName, defaultLocale, retryInDefaultLocale, directory, directoryPermissions, extension, fallbacks, indent, logDebugFn, logErrorFn, logWarnFn, preserveLegacyCase, objectNotation, prefix, queryParameter, register, updateFiles, syncFiles, missingKeyFn, parser
-
         return value
+
+    # ===================
+    # =    utilities    =
+    # ===================
+
+    # api
+
+    escapeRegExp = lambda string: re.sub(r'[.*+?^${}()|[\]\\]', lambda substring: f'\\{substring.group(0)}', string)
+
+    checkValues = lambda obj, *keytypes: _checkValues(obj, *keytypes)
+
+    watchFiles = lambda path, handler: _watch(path, handler)
+
+    getArgsList = lambda locals, function: _getArgsList(locals, function)
+
+    parseInterval = lambda string: _entry(string)
+
+    blockedRename = lambda source, target: _rename(source, target)
+
+    # private variables & functions
+
+    def _checkValues(obj, *keytypes):
+        for keytype in keytypes:
+            if type(keytype) is str:
+                if keytype not in obj:
+                    return False
+            elif type(keytype) is list:
+                if len(keytype) < 2:
+                    return False
+                elif keytype[0] not in obj or type(obj[keytype[0]]) not in keytype[1:]:
+                    return False
+            else:
+                return False
+        return True
+
+    class _EventHandler(FileSystemEventHandler):
+        def __init__(self, handler) -> None:
+            self.handler = handler
+
+        def on_any_event(self, event):
+            if globalMutex.acquire(blocking=True, timeout=1):
+                self.handler(event)
+                globalMutex.release()
+            return super().on_any_event(event)
+
+    def _watch(path, handler):
+        handler = _EventHandler(handler)
+        observer = Observer()
+        observer.schedule(handler, path)
+        observer.start()
+
+    def _getArgsList(locals, function):
+        result = []
+        for key in inspect.signature(function).parameters.keys():
+            value = locals[key]
+            if key == 'args':
+                result += list(value)
+            elif key == 'kwargs':
+                result += list(value.values())
+            else:
+                result.append(value)
+        return result
+
+    _patternParts = {
+        'value': '[-+]?(?:inf|\[[0-9]*\.?\d*(?:[eE][-+]?\d+)?)',
+        'leftBrace': '[\(\]\[]',
+        'delimeter': ',',
+        'rightBrace': '[\)\]\[]',
+    }
+
+    _PATTERN = re.compile(rf'({_patternParts["leftBrace"]})({_patternParts["value"]})?({_patternParts["delimeter"]})?({_patternParts["value"]})?({_patternParts["rightBrace"]})')
+
+    def _execPattern(string):
+        match = _PATTERN.search(string)
+        if not match:
+            return None
+        matchList = [match.group()] + [match.groups()[i] if i < len(match.groups()) and match.groups()[i] != '' else None for i in range(5)]
+        _ = matchList[0]
+        leftBrace = matchList[1]
+        fromValue = matchList[2]
+        delimeter = matchList[3]
+        toValue = matchList[4]
+        rightBrace = matchList[5]
+        return {
+            'leftBrace': leftBrace,
+            'fromValue': fromValue,
+            'delimeter': delimeter,
+            'toValue': toValue,
+            'rightBrace': rightBrace
+        }
+
+    def _convert(string):
+        try:
+            return eval(str(string)).real
+        except:
+            return math.nan
+
+    def _parse(string):
+        match = _execPattern(string)
+        if not match:
+            return None
+        return {
+            'from': {
+                'value': _convert(match['fromValue']) if match['fromValue'] is not None else -math.inf,
+                'included': match['leftBrace'] == '['
+            },
+            'to': {
+                'value': _convert(match['toValue']) if match['toValue'] is not None else +math.inf if match['delimeter'] else _convert(match['fromValue']) if match['fromValue'] is not None else math.nan,
+                'included': match['rightBrace'] == ']'
+            }
+        }
+
+    def _check(interval):
+        if not interval or interval['to']['value'] is math.nan:
+            return None
+        if interval['from']['value'] == interval['to']['value']:
+            return interval['from']['included'] and interval['to']['included']
+        return min(interval['from']['value'], interval['to']['value']) == interval['from']['value']
+
+    def _entry(string):
+        if type(string) is not str:
+            return None
+        interval = _parse(string)
+        if not _check(interval):
+            return None
+        return interval
+
+    def _rename(source, target):
+        while True:
+            try:
+                os.rename(source, target)
+                break
+            except:
+                pass
 
     # implicitly configure when created with given options
     # 
     # i18n = I18n({
     #   'locales': ['en', 'fr']
     # })
-    if _OPTS:
+    if type(_OPTS) is dict or _OPTS:
         i18n['configure'](_OPTS)
 
     class I18n(object):
         def __init__(self):
             self.__dict__ = i18n
 
-        @property
-        def version() -> str:
-            pass
+        version: str
 
         @staticmethod
-        def configure(options=_OPTS) -> None:
-            pass
+        def configure(options: dict[str, Any] | bool) -> None: ...
 
         @staticmethod
-        def init(request, response, next) -> None:
-            pass
+        def init(request: dict[str, Any], response: dict[str, Any], next: FunctionType) -> None: ...
 
         @overload
         @staticmethod
-        def __(phraseOrOptions=None, *replace) -> str:
-            pass
+        def __(phraseOrOptions: dict[str, str] | str, *replace: str | None) -> str: ...
 
         @overload
         @staticmethod
-        def __(phraseOrOptions, replacements) -> str:
-            pass
+        def __(phraseOrOptions: dict[str, str] | str, replacements: dict[str, str] | None) -> str: ...
 
         @overload
         @staticmethod
-        def __n(phrase, count) -> str:
-            pass
+        def __n(phrase: dict[str, str] | str, count: int) -> str: ...
 
         @overload
         @staticmethod
-        def __n(phrase, count) -> str:
-            pass
+        def __n(phrase: str, plural: str, count: int) -> str: ...
+
+        @staticmethod
+        def __l(phrase: str) -> list[str]: ...
+
+        @staticmethod
+        def __h(phrase: str) -> list[dict[str, str]]: ...
 
         @overload
         @staticmethod
-        def __n(phrase, plural, count) -> str:
-            pass
-
-        @staticmethod
-        def __l(phrase) -> str:
-            pass
-
-        @staticmethod
-        def __h(phrase) -> str:
-            pass
+        def __mf(phraseOrOptions: str, *replace: dict[str, Any] | None) -> str: ...
 
         @overload
         @staticmethod
-        def __mf(phraseOrOptions, *replace) -> str:
-            pass
+        def __mf(phraseOrOptions: str, replacements: dict[str, Any]) -> str: ...
+
+        @staticmethod
+        def getLocale(request: dict[str, Any]) -> str: ...
 
         @overload
         @staticmethod
-        def __mf(phraseOrOptions, replacements) -> str:
-            pass
-
-        @staticmethod
-        def getLocale(request) -> str:
-            pass
+        def setLocale(locale: str) -> str: ...
 
         @overload
         @staticmethod
-        def setLocale(locale) -> str:
-            pass
+        def setLocale(requestOrResponse: dict[str, Any], locale: str, inheritance: bool) -> str: ...
 
         @overload
         @staticmethod
-        def setLocale(requestOrResponse, locale, inheritance) -> str:
-            pass
+        def setLocale(objects: list[dict[str, Any]], locale: str, inheritance: bool) -> str: ...
 
         @overload
         @staticmethod
-        def setLocale(objects, locale, inheritance) -> str:
-            pass
+        def getCatalog() -> Any: ...
 
         @overload
         @staticmethod
-        def getCatalog() -> Any:
-            pass
+        def getCatalog(locale: str) -> Any: ...
 
         @overload
         @staticmethod
-        def getCatalog(locale) -> Any:
-            pass
-
-        @overload
-        @staticmethod
-        def getCatalog(request, locale) -> Any:
-            pass
+        def getCatalog(request: dict[str, Any], locale: str) -> Any: ...
 
         @staticmethod
-        def getLocales() -> list[str]:
-            pass
+        def getLocales() -> list[str]: ...
 
         @staticmethod
-        def addLocale(locale) -> None:
-            pass
+        def addLocale(locale: str) -> None: ...
 
         @staticmethod
-        def removeLocale(locale) -> None:
-            pass
+        def removeLocale(locale: str) -> None: ...
 
     return I18n()

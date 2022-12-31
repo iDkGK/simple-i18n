@@ -14,6 +14,7 @@ pip install simple-i18n
 
 ```py
 from simple-i18n import I18n
+
 ```
 
 Write description here

@@ -12,7 +12,7 @@ setup(
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     packages=['simple_i18n'],
-    requires=['pystache'],
+    requires=['pystache', 'watchdog'],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
@@ -26,6 +26,5 @@ setup(
     ],
     keywords=['i18n', 'gettext', 'translation'],
     platforms=['MacOS X', 'Windows', 'Linux'],
-    zip_safe=True,
-
+    zip_safe=True
 )
