@@ -1,6 +1,6 @@
 # i18n
 
-Write description here
+Lightweight simple translation JavaScript module \'i18n\' in Python implementation.
 
 ## Install
 
