@@ -22,7 +22,9 @@ import stat
 from threading import Lock
 from typing import (
     Any,
+    Callable,
     overload,
+    NotRequired,
     TypedDict
 )
 from types import (
@@ -32,44 +34,56 @@ from types import (
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-# setting global mutex in case that multiple I18n instances read & write at the same time
-globalMutex = Lock()
-
 # type hinting
 class _MustacheConfigT(TypedDict):
-    tags: list[str]
-    disable: bool
+    tags: NotRequired[list[str]]
+    disable: NotRequired[bool]
 
-class _OPTT(TypedDict):
-    locales: list[str]
-    fallbacks: dict[str, str]
-    defaultLocale: str
-    retryInDefaultLocale: bool
-    cookie: str
-    header: str
-    queryParameter: str
-    directory: str
-    directoryPermissions: str
-    autoReload: bool
-    updateFiles: bool
-    syncFiles: bool
-    indent: str
-    extension: str
-    prefix: str
-    objectNotation: bool
-    logDebugFn: FunctionType
-    logWarnFn: FunctionType
-    logErrorFn: FunctionType
-    missingKeyFn: FunctionType
-    register: dict[str, Any]
-    api: dict[str, str]
-    preserveLegacyCase: bool
-    staticCatalog: dict[str, dict[str, dict[str, str]]]
-    mustacheConfig: _MustacheConfigT
-    parser: ModuleType | Any
+class _OptionType(TypedDict):
+    locales: NotRequired[list[str]]
+    fallbacks: NotRequired[dict[str, str]]
+    defaultLocale: NotRequired[str]
+    retryInDefaultLocale: NotRequired[bool]
+    cookie: NotRequired[str]
+    header: NotRequired[str]
+    queryParameter: NotRequired[str]
+    directory: NotRequired[str]
+    directoryPermissions: NotRequired[str]
+    autoReload: NotRequired[bool]
+    updateFiles: NotRequired[bool]
+    syncFiles: NotRequired[bool]
+    indent: NotRequired[str]
+    extension: NotRequired[str]
+    prefix: NotRequired[str]
+    objectNotation: NotRequired[bool]
+    logDebugFn: NotRequired[Callable[[str], None]]
+    logWarnFn: NotRequired[Callable[[str], None]]
+    logErrorFn: NotRequired[Callable[[str], None]]
+    missingKeyFn: NotRequired[Callable[[str, str], str]]
+    register: NotRequired[dict[str, Any]]
+    api: NotRequired[dict[str, str]]
+    preserveLegacyCase: NotRequired[bool]
+    staticCatalog: NotRequired[dict[str, dict[str, dict[str, str]]]]
+    mustacheConfig: NotRequired[_MustacheConfigT]
+    parser: NotRequired[ModuleType | Any]
 
 # create constructor function
-def I18n(_OPTS: _OPTT = False):
+def I18n(_OPTS: _OptionType = False):
+    '''Create and return an I18n singleton
+
+    Create an I18n singleton according to user-provided options and return the singleton.\n
+    User can create as many as possible since the base class is locally defined.
+
+    Args:
+        _OPTS: A dict including user-provided options.
+
+    Returns:
+        An I18n singleton with user-provided options applied to itself.
+
+    Raises:
+        NotImplementedError: ...
+        FileExistsError: ...
+    '''
     MessageformatInstanceForLocale = {}
     PluralsForLocale = {}
     locales = {}
@@ -922,19 +936,54 @@ def I18n(_OPTS: _OPTT = False):
                 return False
         return True
 
+    class _WatchDogFactory(object):
+        __dogs = {}
+
+        @staticmethod
+        def create(path, dog):
+            name = os.path.abspath(path)
+            if name not in _WatchDogFactory.__dogs:
+                _WatchDogFactory.__dogs[name] = {
+                    'mutex': Lock(),
+                    'observer': dog
+                }
+
+        @staticmethod
+        def delete(path):
+            name = os.path.abspath(path)
+            if name in _WatchDogFactory.__dogs:
+                _WatchDogFactory.__dogs[name]['observer'].stop()
+                del _WatchDogFactory.__dogs[name]
+
+        @staticmethod
+        def obtainMutex(path):
+            name = os.path.abspath(path)
+            if name not in _WatchDogFactory.__dogs:
+                raise
+            return _WatchDogFactory.__dogs[name]['mutex']
+
+        @staticmethod
+        def obtainDog(path):
+            name = os.path.abspath(path)
+            if name not in _WatchDogFactory.__dogs:
+                raise
+            return _WatchDogFactory.__dogs[name]['observer']
+
     class _EventHandler(FileSystemEventHandler):
-        def __init__(self, handler) -> None:
+        def __init__(self, path, handler):
+            self.path = path
             self.handler = handler
 
         def on_any_event(self, event):
-            if globalMutex.acquire(blocking=True, timeout=1):
+            if _WatchDogFactory.obtainMutex(self.path).acquire(blocking=True, timeout=1):
                 self.handler(event)
-                globalMutex.release()
+                _WatchDogFactory.obtainMutex(self.path).release()
             return super().on_any_event(event)
 
     def _watch(path, handler):
-        handler = _EventHandler(handler)
+        handler = _EventHandler(path, handler)
         observer = Observer()
+        _WatchDogFactory.create(path, observer)
         observer.schedule(handler, path)
         observer.start()
 
@@ -1034,13 +1083,18 @@ def I18n(_OPTS: _OPTT = False):
         def __init__(self):
             self.__dict__ = i18n
 
+        def __del__(self):
+            # tricks
+            nonlocal directory
+            _WatchDogFactory.delete(os.path.abspath(directory))
+
         version: str
 
         @staticmethod
         def configure(options: dict[str, Any] | bool) -> None: ...
 
         @staticmethod
-        def init(request: dict[str, Any], response: dict[str, Any], next: FunctionType) -> None: ...
+        def init(request: dict[str, Any], response: dict[str, Any], next: Callable[[], None]) -> None: ...
 
         @overload
         @staticmethod
