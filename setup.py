@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='simple-i18n',
-    version='0.1.0',
+    version='0.1.1',
     url='https://github.com/iDkGK/simple-i18n',
     author='iDkGK',
     author_email='1444807655@qq.com',
@@ -12,7 +12,7 @@ setup(
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     packages=['simple_i18n'],
-    requires=['pystache', 'watchdog'],
+    install_requires=['pystache', 'watchdog'],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',

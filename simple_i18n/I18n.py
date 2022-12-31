@@ -2,7 +2,7 @@ __all__ = ['I18n']
 __title__ = 'simple-i18n'
 __description__ = 'Lightweight simple translation JavaScript module \'i18n\' in Python implementation.'
 __url__ = 'https://github.com/iDkGK/simple-i18n'
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __author__ = 'iDkGK'
 __author_email__ = '1444807655@qq.com'
 __license__ = 'MIT'
@@ -132,7 +132,7 @@ def I18n(_OPTS: _OptionType = False):
     # public exports
     i18n = {}
 
-    i18n['version'] = '0.1.0'
+    i18n['version'] = '0.1.1'
 
     def i18nConfigure(opt=_OPTS, *args, **kwargs):
         # access variables from upper function
