@@ -1,3 +1,6 @@
 .venv/
 .vscode/
 test/
+build/
+dist/
+simple_i18n.egg-info
