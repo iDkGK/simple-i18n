@@ -940,7 +940,7 @@ def I18n(_OPTS: _OptionType = False):
         __dogs = {}
 
         @staticmethod
-        def create(path, dog):
+        def create(dog, path):
             name = os.path.abspath(path)
             if name not in _WatchDogFactory.__dogs:
                 _WatchDogFactory.__dogs[name] = {
@@ -970,8 +970,8 @@ def I18n(_OPTS: _OptionType = False):
             return _WatchDogFactory.__dogs[name]['observer']
 
     class _EventHandler(FileSystemEventHandler):
-        def __init__(self, path, handler):
-            self.path = path
+        def __init__(self, handler, path):
+            self.path = os.path.abspath(path)
             self.handler = handler
 
         def on_any_event(self, event):
@@ -981,9 +981,9 @@ def I18n(_OPTS: _OptionType = False):
             return super().on_any_event(event)
 
     def _watch(path, handler):
-        handler = _EventHandler(path, handler)
+        handler = _EventHandler(handler, path)
         observer = Observer()
-        _WatchDogFactory.create(path, observer)
+        _WatchDogFactory.create(observer, path)
         observer.schedule(handler, path)
         observer.start()
 
